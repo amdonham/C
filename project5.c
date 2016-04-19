@@ -54,6 +54,64 @@ void getPhysical(long *logicals){
 	}
 }
 
+int isFreeFrame(){
+	int i;
+	for(i = 0;i < 128;i++){
+		if(pageTable[i] == 1){return i;}
+	}
+	return 0;
+}
+
+int findVictim(){
+	int i;
+	for(i = 0; i < 128; i++){
+		int intlb = 0;
+		int j;
+		for(j = 0; j < 16; j++){
+			if(tlb[j][0] == i){intlb = 1;}
+		}
+		if(!intlb){return i;}
+	}
+}
+void getPhysicalMod(long *logicals){
+	physical = malloc(sizeof(long)*1000);
+	int i;
+	long frame = 0;
+	for(i = 0;i<numAdds;i++){
+		int off = offset[i];
+		long isTlb = checkTlb(i);
+		if(isTlb == 2){	
+			if(pageTable[page[i]] == 1){
+				pageTable[page[i]] = frame; 
+				frame += 128;
+				pageFault++;
+			}
+			else{
+				
+				int freeFrame = isFreeFrame();
+				//Use a free frame if available
+				if(freeFrame>0){
+					pageTable[freeFrame] = frame;
+					frame += 128;
+					pageFault++;
+				}
+				//If no free frame find first frame no in use by tlb and make it victim
+				else{
+					int victim = findVictim();	
+					pageTable[victim] = frame;
+					frame += 128;
+					pageFault++;
+				}
+			}
+			physical[i] = pageTable[page[i]] + off;
+			addTlb(i);
+		}
+		
+		else{physical[i] = isTlb + off;tlbHits++;}
+		
+	}
+}
+
 void initPageTable(){
 	pageTable = malloc(256*sizeof(long));
 	int i;
@@ -142,11 +200,18 @@ long * openFile(char* filename){
 int main(int argc,char *argv[]){
 	//Get Command Line Args
 	char* addresses = argv[1];
+	//Prompt for Mod
+	printf("Input '1' for Modifications and '0' for No Modifications: ");
+	char input[80];
+	fgets(input,80,stdin);
+	int mod = atoi(input);
+	if(mod == 1){mod = 1;}
 	//Open file and read addresses
 	long *logicals = openFile(addresses);
 	toBinary(logicals);
 	initPageTable();
-	getPhysical(logicals);
+	if(mod){getPhysicalMod(logicals);}
+	else{getPhysical(logicals);}
 	//Print out logical addresses
 	int i;
 	for(i = 0; i < numAdds;i++){
