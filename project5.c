@@ -8,7 +8,30 @@ int *page;
 int *offset;
 long *pageTable;
 long* physical;
+int pageFault = 1;
+int tlbHits = 0;
+long **tlb;
 
+long checkTlb(int index){
+	int i;
+	for(i = 0;i < 16; i++){
+		if(tlb[i][0] == page[index]){;
+			return tlb[i][1];
+		}
+	}
+	
+	return (long)2;
+}
+
+void addTlb(int index){
+	int i;
+	for(i = 1;i < 16; i++){
+		tlb[i-1][0] = tlb[i][0];
+		tlb[i-1][1] = tlb[i][1];
+	}
+	tlb[15][0] = page[index];
+	tlb[15][1] = pageTable[page[index]];
+}
 
 void getPhysical(long *logicals){
 	physical = malloc(sizeof(long)*1000);
@@ -16,12 +39,18 @@ void getPhysical(long *logicals){
 	long frame = 0;
 	for(i = 0;i<numAdds;i++){
 		int off = offset[i];
-		if(pageTable[page[i]] == 1){
-			pageTable[page[i]] = frame; 
-			frame += 256;
+		long isTlb = checkTlb(i);
+		if(isTlb == 2){	
+			if(pageTable[page[i]] == 1){
+				pageTable[page[i]] = frame; 
+				frame += 256;
+				pageFault++;
+			}
+			physical[i] = pageTable[page[i]] + off;
+			addTlb(i);
 		}
-		int frameNum = pageTable[page[i]];
-		physical[i] = frameNum + off;
+		else{physical[i] = isTlb + off;tlbHits++;}
+		
 	}
 }
 
@@ -31,6 +60,12 @@ void initPageTable(){
 	pageTable[0] = 0;
 	for(i = 1; i < 256;i++){
 		pageTable[i] = 1;
+	}
+	tlb = malloc(sizeof(long)*16);
+	for(i = 0;i < 16;i++){
+		tlb[i] = malloc(2*sizeof(long));
+		tlb[i][0] = 256;
+		tlb[i][1] = 0;
 	}
 }
 
@@ -115,12 +150,16 @@ int main(int argc,char *argv[]){
 	//Print out logical addresses
 	int i;
 	for(i = 0; i < numAdds;i++){
-		printf("%lu : ",logicals[i]);
-		printf("%d ",page[i]);
-
-		printf("%lu",physical[i]);
+		printf("Virtual address: %lu ",logicals[i]);
+		printf("Physical address: %lu ",physical[i]);
+		printf("Value: %d",*((signed char *)&physical[i]));
 		printf("\n");
 		
 	}
+	printf("Number of Translated Addresses = %lu\n",numAdds);
+	printf("Page Faults = %d\n",pageFault);
+	printf("Page Fault Rate = %g\n", (double)pageFault/(double)numAdds);
+	printf("TLB Hits = %d\n",tlbHits);
+	printf("TLB Hit Rate = %g\n", (double)tlbHits/(double)numAdds);
 	return 0;
 }
